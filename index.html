@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic Tac Toe</title>
+  <style>
+    /* Basic styling for a clean, responsive UI */
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    #gameContainer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #controls {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .mode-select,
+    .difficulty-select {
+      margin: 10px 0;
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-template-rows: repeat(3, 100px);
+      gap: 5px;
+    }
+    .cell {
+      width: 100px;
+      height: 100px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2em;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      transition: background-color 0.3s;
+    }
+    .cell:hover {
+      background: #e0e0e0;
+    }
+    .winning {
+      background: #aaffaa;
+    }
+    #message {
+      margin: 20px 0;
+      font-size: 1.2em;
+    }
+    #scoreBoard {
+      margin: 20px 0;
+      font-size: 1.2em;
+    }
+    #reset {
+      padding: 10px 20px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tic Tac Toe</h1>
+  <div id="gameContainer">
+    <div id="controls">
+      <!-- Mode selection: Two-player or Single-player -->
+      <div class="mode-select">
+        <label>
+          <input type="radio" name="mode" value="two" checked />
+          Two Player
+        </label>
+        <label>
+          <input type="radio" name="mode" value="single" />
+          Single Player
+        </label>
+      </div>
+      <!-- Difficulty selection for single-player mode -->
+      <div class="difficulty-select" id="difficultyContainer" style="display: none;">
+        <label for="difficulty">AI Difficulty:</label>
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Game board: 3x3 grid -->
+    <div id="board">
+      <div class="cell" data-index="0"></div>
+      <div class="cell" data-index="1"></div>
+      <div class="cell" data-index="2"></div>
+      <div class="cell" data-index="3"></div>
+      <div class="cell" data-index="4"></div>
+      <div class="cell" data-index="5"></div>
+      <div class="cell" data-index="6"></div>
+      <div class="cell" data-index="7"></div>
+      <div class="cell" data-index="8"></div>
+    </div>
+
+    <!-- Message display for turn, win, or draw -->
+    <div id="message"></div>
+    <!-- Reset button -->
+    <button id="reset">Reset Game</button>
+    <!-- Score board (stored in localStorage) -->
+    <div id="scoreBoard"></div>
+  </div>
+
+  <script>
+    // Get references to DOM elements
+    const boardElem = document.getElementById('board');
+    const cells = document.querySelectorAll('.cell');
+    const messageElem = document.getElementById('message');
+    const resetButton = document.getElementById('reset');
+    const modeRadios = document.getElementsByName('mode');
+    const difficultyContainer = document.getElementById('difficultyContainer');
+    const difficultySelect = document.getElementById('difficulty');
+    const scoreBoardElem = document.getElementById('scoreBoard');
+
+    // Game state variables
+    let board; // Array representing the board state
+    let currentPlayer;
+    let gameOver;
+    let gameMode = 'two'; // 'two' for two-player, 'single' for single-player
+    let aiDifficulty = 'easy'; // 'easy' or 'hard'
+    // Score object to track wins and draws; saved to localStorage
+    let score = { X: 0, O: 0, draws: 0 };
+
+    // Winning combinations: rows, columns, and diagonals
+    const winConditions = [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [0, 3, 6],
+      [1, 4, 7],
+      [2, 5, 8],
+      [0, 4, 8],
+      [2, 4, 6]
+    ];
+
+    // Initialize game state and UI
+    function initGame() {
+      board = Array(9).fill('');
+      currentPlayer = 'X';
+      gameOver = false;
+      messageElem.textContent = `Turn: ${currentPlayer}`;
+      cells.forEach(cell => {
+        cell.textContent = '';
+        cell.classList.remove('winning');
+      });
+      loadScore();
+      updateScoreBoard();
+    }
+
+    // Load score from localStorage if it exists
+    function loadScore() {
+      const storedScore = localStorage.getItem('ticTacToeScore');
+      if (storedScore) {
+        score = JSON.parse(storedScore);
+      }
+    }
+
+    // Save score to localStorage
+    function saveScore() {
+      localStorage.setItem('ticTacToeScore', JSON.stringify(score));
+    }
+
+    // Update the score board display
+    function updateScoreBoard() {
+      scoreBoardElem.textContent = `Score - X: ${score.X} | O: ${score.O} | Draws: ${score.draws}`;
+    }
+
+    // Check for a winning combination on the board
+    function checkWinner() {
+      for (let condition of winConditions) {
+        const [a, b, c] = condition;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+          // Highlight winning cells
+          condition.forEach(index => {
+            cells[index].classList.add('winning');
+          });
+          return board[a];
+        }
+      }
+      return null;
+    }
+
+    // Check if the game is a draw (no empty cells left)
+    function checkDraw() {
+      return board.every(cell => cell !== '');
+    }
+
+    // Handle a player's move when a cell is clicked
+    function handleCellClick(e) {
+      const index = e.target.getAttribute('data-index');
+      if (board[index] !== '' || gameOver) return; // Ignore if cell is occupied or game over
+
+      board[index] = currentPlayer;
+      e.target.textContent = currentPlayer;
+
+      const winner = checkWinner();
+      if (winner) {
+        messageElem.textContent = `Player ${winner} wins!`;
+        gameOver = true;
+        score[winner]++;
+        saveScore();
+        updateScoreBoard();
+        return;
+      } else if (checkDraw()) {
+        messageElem.textContent = "It's a draw!";
+        gameOver = true;
+        score.draws++;
+        saveScore();
+        updateScoreBoard();
+        return;
+      }
+
+      // Switch turn
+      currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+      messageElem.textContent = `Turn: ${currentPlayer}`;
+
+      // If in single-player mode and it's AI's turn, trigger AI move after a short delay
+      if (gameMode === 'single' && currentPlayer === 'O' && !gameOver) {
+        setTimeout(aiTurn, 500);
+      }
+    }
+
+    // AI move logic: choose a move based on the difficulty setting
+    function aiTurn() {
+      const index = getAIMove();
+      if (index === null) return;
+
+      board[index] = 'O';
+      cells[index].textContent = 'O';
+
+      const winner = checkWinner();
+      if (winner) {
+        messageElem.textContent = `Player ${winner} wins!`;
+        gameOver = true;
+        score[winner]++;
+        saveScore();
+        updateScoreBoard();
+        return;
+      } else if (checkDraw()) {
+        messageElem.textContent = "It's a draw!";
+        gameOver = true;
+        score.draws++;
+        saveScore();
+        updateScoreBoard();
+        return;
+      }
+
+      currentPlayer = 'X';
+      messageElem.textContent = `Turn: ${currentPlayer}`;
+    }
+
+    // Determine AI move based on current difficulty
+    function getAIMove() {
+      // Get indices of all empty cells
+      const emptyIndices = board
+        .map((cell, idx) => (cell === '' ? idx : null))
+        .filter(idx => idx !== null);
+      if (emptyIndices.length === 0) return null;
+
+      if (aiDifficulty === 'easy') {
+        // Easy: choose a random empty cell
+        return emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+      } else if (aiDifficulty === 'hard') {
+        // Hard: try to win, then block the opponent, else choose randomly
+
+        // 1. Try to win
+        for (let index of emptyIndices) {
+          board[index] = 'O';
+          if (checkWinner() === 'O') {
+            board[index] = '';
+            return index;
+          }
+          board[index] = '';
+        }
+
+        // 2. Block opponent's win
+        for (let index of emptyIndices) {
+          board[index] = 'X';
+          if (checkWinner() === 'X') {
+            board[index] = '';
+            return index;
+          }
+          board[index] = '';
+        }
+
+        // 3. Otherwise, choose a random move
+        return emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+      }
+    }
+
+    // Attach event listeners to each cell
+    cells.forEach(cell => {
+      cell.addEventListener('click', handleCellClick);
+    });
+
+    // Reset button to restart the game
+    resetButton.addEventListener('click', initGame);
+
+    // Listen for changes in game mode (two-player vs. single-player)
+    modeRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        gameMode = e.target.value;
+        // Show AI difficulty options only for single-player mode
+        if (gameMode === 'single') {
+          difficultyContainer.style.display = 'block';
+        } else {
+          difficultyContainer.style.display = 'none';
+        }
+        initGame();
+      });
+    });
+
+    // Listen for changes in AI difficulty
+    difficultySelect.addEventListener('change', (e) => {
+      aiDifficulty = e.target.value;
+      initGame();
+    });
+
+    // Start the game when the page loads
+    initGame();
+  </script>
+</body>
+</html>
