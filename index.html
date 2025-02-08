@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tic Tac Toe</title>
   <style>
-    /* Basic styling for a clean, responsive UI */
+    /* Base styles for a clean, responsive UI */
     body {
       display: flex;
       flex-direction: column;
@@ -14,6 +14,7 @@
       margin: 0;
       padding: 20px;
       background: #f0f0f0;
+      color: #333;
     }
     h1 {
       margin-bottom: 20px;
@@ -22,13 +23,17 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      max-width: 400px;
+      width: 100%;
     }
     #controls {
       margin-bottom: 20px;
       text-align: center;
     }
     .mode-select,
-    .difficulty-select {
+    .difficulty-select,
+    #playerNames,
+    #themeSwitcher {
       margin: 10px 0;
     }
     #board {
@@ -61,12 +66,30 @@
     }
     #scoreBoard {
       margin: 20px 0;
-      font-size: 1.2em;
+      font-size: 1em;
+      text-align: left;
+      width: 100%;
     }
     #reset {
       padding: 10px 20px;
       font-size: 1em;
       cursor: pointer;
+    }
+    /* Dark mode styles */
+    body.dark-mode {
+      background: #222;
+      color: #eee;
+    }
+    body.dark-mode .cell {
+      background: #444;
+      border-color: #666;
+    }
+    body.dark-mode .cell:hover {
+      background: #555;
+    }
+    body.dark-mode #reset {
+      background: #333;
+      color: #eee;
     }
   </style>
 </head>
@@ -93,6 +116,23 @@
           <option value="hard">Hard</option>
         </select>
       </div>
+      <!-- Player Name Inputs -->
+      <div id="playerNames">
+        <div>
+          <label for="player1Name">Player 1 Name:</label>
+          <input type="text" id="player1Name" placeholder="Player 1" value="Player 1" />
+        </div>
+        <div id="player2NameContainer">
+          <label for="player2Name">Player 2 Name:</label>
+          <input type="text" id="player2Name" placeholder="Player 2" value="Player 2" />
+        </div>
+      </div>
+      <!-- Theme Switcher -->
+      <div id="themeSwitcher">
+        <label>
+          <input type="checkbox" id="themeToggle" /> Dark Mode
+        </label>
+      </div>
     </div>
 
     <!-- Game board: 3x3 grid -->
@@ -108,11 +148,11 @@
       <div class="cell" data-index="8"></div>
     </div>
 
-    <!-- Message display for turn, win, or draw -->
+    <!-- Message display -->
     <div id="message"></div>
     <!-- Reset button -->
     <button id="reset">Reset Game</button>
-    <!-- Score board (stored in localStorage) -->
+    <!-- Score board -->
     <div id="scoreBoard"></div>
   </div>
 
@@ -126,17 +166,27 @@
     const difficultyContainer = document.getElementById('difficultyContainer');
     const difficultySelect = document.getElementById('difficulty');
     const scoreBoardElem = document.getElementById('scoreBoard');
+    const player1NameInput = document.getElementById('player1Name');
+    const player2NameInput = document.getElementById('player2Name');
+    const player2NameContainer = document.getElementById('player2NameContainer');
+    const themeToggle = document.getElementById('themeToggle');
 
     // Game state variables
-    let board; // Array representing the board state
-    let currentPlayer;
+    let board;           // Array representing the board state
+    let currentPlayer;   // 'X' or 'O'
     let gameOver;
-    let gameMode = 'two'; // 'two' for two-player, 'single' for single-player
-    let aiDifficulty = 'easy'; // 'easy' or 'hard'
-    // Score object to track wins and draws; saved to localStorage
-    let score = { X: 0, O: 0, draws: 0 };
+    let gameMode = 'two';    // 'two' (two-player) or 'single' (single-player)
+    let aiDifficulty = 'easy';
 
-    // Winning combinations: rows, columns, and diagonals
+    // Stats object to track games played, win percentages, and streaks
+    let stats = {
+      player1: { name: "Player 1", wins: 0, games: 0, currentStreak: 0, longestStreak: 0 },
+      player2: { name: "Player 2", wins: 0, games: 0, currentStreak: 0, longestStreak: 0 },
+      draws: 0,
+      gamesPlayed: 0
+    };
+
+    // Winning combinations (rows, columns, and diagonals)
     const winConditions = [
       [0, 1, 2],
       [3, 4, 5],
@@ -148,54 +198,117 @@
       [2, 4, 6]
     ];
 
-    // Initialize game state and UI
-    function initGame() {
-      board = Array(9).fill('');
-      currentPlayer = 'X';
-      gameOver = false;
-      messageElem.textContent = `Turn: ${currentPlayer}`;
-      cells.forEach(cell => {
-        cell.textContent = '';
-        cell.classList.remove('winning');
-      });
-      loadScore();
-      updateScoreBoard();
-    }
-
-    // Load score from localStorage if it exists
-    function loadScore() {
-      const storedScore = localStorage.getItem('ticTacToeScore');
-      if (storedScore) {
-        score = JSON.parse(storedScore);
+    // Load stats from localStorage
+    function loadStats() {
+      const storedStats = localStorage.getItem('ticTacToeStats');
+      if (storedStats) {
+        stats = JSON.parse(storedStats);
       }
     }
 
-    // Save score to localStorage
-    function saveScore() {
-      localStorage.setItem('ticTacToeScore', JSON.stringify(score));
+    // Save stats to localStorage
+    function saveStats() {
+      localStorage.setItem('ticTacToeStats', JSON.stringify(stats));
     }
 
-    // Update the score board display
-    function updateScoreBoard() {
-      scoreBoardElem.textContent = `Score - X: ${score.X} | O: ${score.O} | Draws: ${score.draws}`;
+    // Update the scoreboard display with stats
+    function updateStatsBoard() {
+      const p1 = stats.player1;
+      const p2 = stats.player2;
+      const p1WinPct = p1.games ? ((p1.wins / p1.games) * 100).toFixed(1) : 0;
+      const p2WinPct = p2.games ? ((p2.wins / p2.games) * 100).toFixed(1) : 0;
+
+      // Determine "Most Wins"
+      let mostWins;
+      if (p1.wins > p2.wins) {
+        mostWins = p1.name;
+      } else if (p2.wins > p1.wins) {
+        mostWins = p2.name;
+      } else {
+        mostWins = "Tie";
+      }
+
+      // Determine "Longest Streak"
+      let longestStreak;
+      if (p1.longestStreak > p2.longestStreak) {
+        longestStreak = p1.name;
+      } else if (p2.longestStreak > p1.longestStreak) {
+        longestStreak = p2.name;
+      } else {
+        longestStreak = "Tie";
+      }
+
+      scoreBoardElem.innerHTML = `
+        <div>${p1.name} - Wins: ${p1.wins}, Games: ${p1.games}, Win%: ${p1WinPct}%, Current Streak: ${p1.currentStreak}, Longest Streak: ${p1.longestStreak}</div>
+        <div>${p2.name} - Wins: ${p2.wins}, Games: ${p2.games}, Win%: ${p2WinPct}%, Current Streak: ${p2.currentStreak}, Longest Streak: ${p2.longestStreak}</div>
+        <div>Draws: ${stats.draws}, Total Games: ${stats.gamesPlayed}</div>
+        <div>Most Wins: ${mostWins}</div>
+        <div>Longest Streak: ${longestStreak}</div>
+      `;
     }
 
-    // Check for a winning combination on the board
+    // Update stats after a game ends
+    // winner: 'X' if Player 1 wins, 'O' if Player 2 wins, or null for a draw
+    function updateStats(winner) {
+      stats.gamesPlayed++;
+      stats.player1.games++;
+      stats.player2.games++;
+      if (winner === 'X') {
+        stats.player1.wins++;
+        stats.player1.currentStreak++;
+        stats.player2.currentStreak = 0;
+        if (stats.player1.currentStreak > stats.player1.longestStreak) {
+          stats.player1.longestStreak = stats.player1.currentStreak;
+        }
+      } else if (winner === 'O') {
+        stats.player2.wins++;
+        stats.player2.currentStreak++;
+        stats.player1.currentStreak = 0;
+        if (stats.player2.currentStreak > stats.player2.longestStreak) {
+          stats.player2.longestStreak = stats.player2.currentStreak;
+        }
+      } else {
+        // Draw: reset both streaks
+        stats.draws++;
+        stats.player1.currentStreak = 0;
+        stats.player2.currentStreak = 0;
+      }
+      saveStats();
+      updateStatsBoard();
+    }
+
+    // Update player names from the input fields.
+    // In single-player mode, Player 2 is set to "Computer."
+    function updatePlayerNames() {
+      const p1Name = player1NameInput.value.trim() || 'Player 1';
+      let p2Name;
+      if (gameMode === 'single') {
+        p2Name = "Computer";
+        player2NameInput.value = "Computer";
+        player2NameInput.disabled = true;
+      } else {
+        p2Name = player2NameInput.value.trim() || 'Player 2';
+        player2NameInput.disabled = false;
+      }
+      stats.player1.name = p1Name;
+      stats.player2.name = p2Name;
+    }
+
+    // Check for a winner on the board. Highlights the winning cells.
     function checkWinner() {
       for (let condition of winConditions) {
         const [a, b, c] = condition;
         if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-          // Highlight winning cells
           condition.forEach(index => {
             cells[index].classList.add('winning');
           });
-          return board[a];
+          return board[a]; // Returns 'X' or 'O'
         }
       }
       return null;
     }
 
-    // Check if the game is a draw (no empty cells left)
+    // Check if the game is a draw (all cells filled)
     function checkDraw() {
       return board.every(cell => cell !== '');
     }
@@ -210,32 +323,30 @@
 
       const winner = checkWinner();
       if (winner) {
-        messageElem.textContent = `Player ${winner} wins!`;
+        updatePlayerNames(); // Ensure names are up to date
+        const winnerName = (winner === 'X') ? stats.player1.name : stats.player2.name;
+        messageElem.textContent = `${winnerName} wins!`;
         gameOver = true;
-        score[winner]++;
-        saveScore();
-        updateScoreBoard();
+        updateStats(winner);
         return;
       } else if (checkDraw()) {
         messageElem.textContent = "It's a draw!";
         gameOver = true;
-        score.draws++;
-        saveScore();
-        updateScoreBoard();
+        updateStats(null);
         return;
       }
 
       // Switch turn
       currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-      messageElem.textContent = `Turn: ${currentPlayer}`;
+      messageElem.textContent = `Turn: ${(currentPlayer === 'X') ? stats.player1.name : stats.player2.name}`;
 
-      // If in single-player mode and it's AI's turn, trigger AI move after a short delay
+      // In single-player mode, trigger the AI move if it's AI's turn
       if (gameMode === 'single' && currentPlayer === 'O' && !gameOver) {
         setTimeout(aiTurn, 500);
       }
     }
 
-    // AI move logic: choose a move based on the difficulty setting
+    // AI move logic: chooses a move based on the difficulty setting.
     function aiTurn() {
       const index = getAIMove();
       if (index === null) return;
@@ -245,30 +356,26 @@
 
       const winner = checkWinner();
       if (winner) {
-        messageElem.textContent = `Player ${winner} wins!`;
+        updatePlayerNames();
+        messageElem.textContent = `${stats.player2.name} wins!`;
         gameOver = true;
-        score[winner]++;
-        saveScore();
-        updateScoreBoard();
+        updateStats(winner);
         return;
       } else if (checkDraw()) {
         messageElem.textContent = "It's a draw!";
         gameOver = true;
-        score.draws++;
-        saveScore();
-        updateScoreBoard();
+        updateStats(null);
         return;
       }
 
       currentPlayer = 'X';
-      messageElem.textContent = `Turn: ${currentPlayer}`;
+      messageElem.textContent = `Turn: ${stats.player1.name}`;
     }
 
-    // Determine AI move based on current difficulty
+    // Determine the AI's move based on current difficulty
     function getAIMove() {
-      // Get indices of all empty cells
       const emptyIndices = board
-        .map((cell, idx) => (cell === '' ? idx : null))
+        .map((cell, idx) => cell === '' ? idx : null)
         .filter(idx => idx !== null);
       if (emptyIndices.length === 0) return null;
 
@@ -276,8 +383,7 @@
         // Easy: choose a random empty cell
         return emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
       } else if (aiDifficulty === 'hard') {
-        // Hard: try to win, then block the opponent, else choose randomly
-
+        // Hard: try to win, block the opponent, or choose randomly
         // 1. Try to win
         for (let index of emptyIndices) {
           board[index] = 'O';
@@ -287,7 +393,6 @@
           }
           board[index] = '';
         }
-
         // 2. Block opponent's win
         for (let index of emptyIndices) {
           board[index] = 'X';
@@ -297,29 +402,44 @@
           }
           board[index] = '';
         }
-
-        // 3. Otherwise, choose a random move
+        // 3. Choose a random move
         return emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
       }
     }
 
-    // Attach event listeners to each cell
+    // Initialize game state and update the UI
+    function initGame() {
+      board = Array(9).fill('');
+      currentPlayer = 'X';
+      gameOver = false;
+      messageElem.textContent = `Turn: ${stats.player1.name}`;
+      cells.forEach(cell => {
+        cell.textContent = '';
+        cell.classList.remove('winning');
+      });
+      updatePlayerNames();
+      loadStats();
+      updateStatsBoard();
+    }
+
+    // Event listeners for each cell click
     cells.forEach(cell => {
       cell.addEventListener('click', handleCellClick);
     });
 
-    // Reset button to restart the game
+    // Reset button to restart the game (without clearing stats)
     resetButton.addEventListener('click', initGame);
 
     // Listen for changes in game mode (two-player vs. single-player)
     modeRadios.forEach(radio => {
       radio.addEventListener('change', (e) => {
         gameMode = e.target.value;
-        // Show AI difficulty options only for single-player mode
         if (gameMode === 'single') {
           difficultyContainer.style.display = 'block';
+          player2NameContainer.style.display = 'none';
         } else {
           difficultyContainer.style.display = 'none';
+          player2NameContainer.style.display = 'block';
         }
         initGame();
       });
@@ -329,6 +449,24 @@
     difficultySelect.addEventListener('change', (e) => {
       aiDifficulty = e.target.value;
       initGame();
+    });
+
+    // Listen for changes in player name inputs
+    player1NameInput.addEventListener('change', () => {
+      updatePlayerNames();
+      saveStats();
+      updateStatsBoard();
+      messageElem.textContent = `Turn: ${stats.player1.name}`;
+    });
+    player2NameInput.addEventListener('change', () => {
+      updatePlayerNames();
+      saveStats();
+      updateStatsBoard();
+    });
+
+    // Theme toggle: switch between light and dark mode
+    themeToggle.addEventListener('change', () => {
+      document.body.classList.toggle('dark-mode', themeToggle.checked);
     });
 
     // Start the game when the page loads
